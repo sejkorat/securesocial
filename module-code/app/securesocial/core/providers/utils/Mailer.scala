@@ -27,6 +27,7 @@ import securesocial.core.BasicProfile
  * A helper trait to send email notifications
  */
 trait Mailer {
+  def getName(): String
   def sendAlreadyRegisteredEmail(user: BasicProfile)(implicit request: RequestHeader, lang: Lang)
   def sendSignUpEmail(to: String, token: String)(implicit request: RequestHeader, lang: Lang)
   def sendWelcomeEmail(user: BasicProfile)(implicit request: RequestHeader, lang: Lang)
@@ -61,6 +62,7 @@ object Mailer {
 
     override def sendSignUpEmail(to: String, token: String)(implicit request: RequestHeader, lang: Lang) {
       val txtAndHtml = mailTemplates.getSignUpEmail(token)
+      logger.info("sending sign up email")
       sendEmail(Messages(SignUpEmailSubject), to, txtAndHtml)
     }
 
@@ -85,22 +87,34 @@ object Mailer {
       sendEmail(Messages(PasswordResetOkSubject), user.email.get, txtAndHtml)
     }
 
+    override def getName(): String = {
+      "default mailer plugin"
+    }
+
     override def sendEmail(subject: String, recipient: String, body: (Option[Txt], Option[Html])) {
       import com.typesafe.plugin._
       import play.api.libs.concurrent.Execution.Implicits._
 
       import scala.concurrent.duration._
 
-      logger.debug(s"[securesocial] sending email to $recipient")
-      logger.debug(s"[securesocial] mail = [$body]")
+      logger.info(s"[securesocial] sending email to $recipient")
+      logger.info(s"[securesocial] mail = [$body]")
 
       Akka.system.scheduler.scheduleOnce(1.seconds) {
+        logger.info(s"Sending mail to ${recipient}, subject ${subject}")
         val mail = use[MailerPlugin].email
         mail.setSubject(subject)
         mail.setRecipient(recipient)
         mail.setFrom(fromAddress)
         // the mailer plugin handles null / empty string gracefully
-        mail.send(body._1.map(_.body).getOrElse(""), body._2.map(_.body).getOrElse(""))
+        try {
+          mail.send(body._1.map(_.body).getOrElse(""), body._2.map(_.body).getOrElse(""))
+        } catch {
+          case e: Exception =>
+            logger.error("Failed to send email", e)
+            throw e
+        }
+        logger.info(s"mail sent to ${recipient}")
       }
     }
   }

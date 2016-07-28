@@ -105,25 +105,32 @@ trait BaseRegistration[U] extends MailTokenBasedOperations[U] {
   def handleStartSignUp = CSRFCheck {
     Action.async {
       implicit request =>
+        logger.info("Handling start sign up")
         startForm.bindFromRequest.fold(
           errors => {
+            logger.info("Errors " + errors.errors)
             Future.successful(BadRequest(env.viewTemplates.getStartSignUpPage(errors)))
           },
           e => {
             val email = e.toLowerCase
+            logger.info("Email is " + email)
             // check if there is already an account for this email address
             env.userService.findByEmailAndProvider(email, UsernamePasswordProvider.UsernamePassword).map {
               maybeUser =>
                 maybeUser match {
                   case Some(user) =>
                     // user signed up already, send an email offering to login/recover password
+                    logger.info("sending already registred email to " + user.email)
                     env.mailer.sendAlreadyRegisteredEmail(user)
                   case None =>
+                    logger.info("User not found")
                     createToken(email, isSignUp = true).flatMap { token =>
+                      logger.info(s"Sending email to ${email} token ${token} mailer ${env.mailer.getName}")
                       env.mailer.sendSignUpEmail(email, token.uuid)
                       env.userService.saveToken(token)
                     }
                 }
+                logger.info("hotovo")
                 handleStartResult().flashing(Success -> Messages(ThankYouCheckEmail), Email -> email)
             }
           }
